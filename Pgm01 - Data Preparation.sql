@@ -28,7 +28,6 @@ ncluster_loader -h 192.168.20.129 -U beehive -w beehive deposit_transaction_1412
 
 
 
-
 drop table if exists deposit_1412;
 create table deposit_1412 (
     Enc_Acct_Id               varchar(256),
@@ -178,7 +177,7 @@ create table card_customer_1412 (
 select * from card_customer_1412 limit 20;
 
 ^z
-ncluster_loader -h 192.168.20.129 -U beehive -w beehive card_customer_1412 card_customer_1412.txt -c
+ncluster_loader -h 192.168.20.129 -U beehive -w beehive card_customer_1412 card_customer_1412.txt -D '\t'
 
 
 

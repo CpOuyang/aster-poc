@@ -1,29 +1,29 @@
 drop table if exists deposit_transaction;
 create table deposit_transaction distribute by hash(this_acct) as
 select
-	case when 0 < txn_amt then enc_trans_acct_id when txn_amt <= 0 then enc_acct_id end as this_acct,
-	case when 0 < txn_amt then enc_acct_id when txn_amt <= 0 then enc_trans_acct_id end as that_acct,
-	abs(txn_amt) as txn_amt
+    case when 0 < txn_amt then enc_trans_acct_id when txn_amt <= 0 then enc_acct_id end as this_acct,
+    case when 0 < txn_amt then enc_acct_id when txn_amt <= 0 then enc_trans_acct_id end as that_acct,
+    abs(txn_amt) as txn_amt
 from deposit_transaction_1412
 where enc_trans_acct_id <> 'BwUBAAUCBnQJAQcIAAdzcyM='
---		and 200000 < abs(txn_amt)
 ;
 
 --edge
 drop table if exists deposit_account_edge;
 create table deposit_account_edge distribute by hash(this_acct) as
 select
-	this_acct, that_acct, sum(txn_amt) as txn_amt, count(*) as txn_cnt
-from (
-	select * from deposit_transaction where abs(txn_amt) between 200000 and 300000 /*union all (
-		select * from deposit_transaction
-		where this_acct in (select this_acct from deposit_transaction where abs(txn_amt) between 200000 and 300000)
-			and 0 <> txn_amt
-	)*/
-) as a
+    this_acct, that_acct, sum(txn_amt) as txn_amt, count(*) as txn_cnt
+from deposit_transaction
+where this_acct in (
+    select this_acct from deposit_transaction where abs(txn_amt) between 200000 and 250000 union
+    select that_acct from deposit_transaction where abs(txn_amt) between 200000 and 250000)
+--    or that_acct in (
+--    select this_acct from deposit_transaction where abs(txn_amt) between 200000 and 250000 union
+--    select that_acct from deposit_transaction where abs(txn_amt) between 200000 and 250000)
+    and 100000 < abs(txn_amt)
 group by 1, 2
 ;
-select count(*) from deposit_account_edge;
+select count(distinct this_acct), count(distinct that_acct), count(*) from deposit_account_edge;
 
 --node
 drop table if exists deposit_account_node;
@@ -33,65 +33,78 @@ select that_acct as node from deposit_account_edge
 ;
 select count(*) from deposit_account_node;
 
+
+
 --pagerank_sending
 drop table if exists deposit_account_pr_that;
 create table deposit_account_pr_that distribute by hash(node) as
 select *
 from pagerank (
-	on deposit_account_node as vertices partition by node 
-	on deposit_account_edge as edges partition by this_acct
-	TargetKey('that_acct')
-	Accumulate('node')
-	EdgeWeight('txn_amt')
+    on deposit_account_node as vertices partition by node 
+    on deposit_account_edge as edges partition by this_acct
+    targetkey('that_acct')
+    accumulate('node')
+    edgeweight('txn_amt')
 ) order by pagerank desc
 ;
 select pagerank, count(*) from deposit_account_pr_that group by 1;
 
-
 --ntree
 drop table if exists deposit_account_nt_input;
-CREATE TABLE deposit_account_nt_input DISTRIBUTE BY HASH(this_acct) AS
-select * from deposit_account_edge;  
+create table deposit_account_nt_input distribute by hash(this_acct) as
+/*
+select * from deposit_account_edge;
 
 insert into deposit_account_nt_input
-	select '0000' as this_acct,
-		A.this_acct as that_acct,
-		0.0 as txn_amt,
-		0 as txn_cnt
-	from (select distinct this_acct  from deposit_account_edge) A
+select '0000' as this_acct,
+    a.this_acct as that_acct,
+    0.0 as txn_amt,
+    0 as txn_cnt
+from (select distinct this_acct  from deposit_account_edge) as a
 ; 
-------ntree.sql-------
+*/
+select * from deposit_account_edge
+union all
+select distinct '0000' as this_acct,
+    this_acct as that_acct,
+    0.0 as txn_amt,
+    0 as txn_cnt
+from deposit_account_edge
+;
+
+------ntree_lv3.sql-------
 drop table if exists deposit_account_nt_lv3;
 create table deposit_account_nt_lv3 distribute by hash(id) as
-select * ffrom ntree (
-	ON deposit_account_nt_input
-	PARTITION BY 1
-	root_node(this_acct='0000')
-	node_id(that_acct)  
-	parent_id(this_acct)
-	mode('down')
-	allow_cycles('true')
-	starts_with('root')
-	output('END')
-	MAXLEVEL('3')
-	result(path(that_acct) AS path,is_cycle(*))
+select * from ntree (
+    on deposit_account_nt_input
+    partition by 1
+    root_node(this_acct='0000')
+    node_id(that_acct)  
+    parent_id(this_acct)
+    mode('down')
+    allow_cycles('true')
+    starts_with('root')
+    output('end')
+    maxlevel('3')
+    result(path(that_acct) as path, is_cycle(*))
 )
 ;
 ------in linux-------
-nohup act -d beehive -h 192.168.20.129 -U beehive -w beehive -f ntree.sql >  ntree.out &
+nohup act -d beehive -h 192.168.20.129 -U beehive -w beehive -f ntree_lv3.sql > ntree_lv3.out &
 
 
+--Reviewed on 0410
 
---ntree(4 level)
 
---after ntree
-alter table  deposit_account_nt_lv4  add column starter varchar ;
-update deposit_account_nt_lv4 set starter = split_part(path, '->' , 1) ;
-alter table  deposit_account_nt_lv4  add column loop_flag varchar ;
-update deposit_account_nt_lv4 set loop_flag = '1' where position(starter in is_cycle) >0 ;
-update deposit_account_nt_lv4 set loop_flag = '0' where position(starter in is_cycle) =0 ;
-alter table  deposit_account_nt_lv4  add column path_len int ;  
-update deposit_account_nt_lv4 set  path_len = length(path)-length(replace(path ,'->',' ')) ;
+--ntree Lv4
+
+alter table  deposit_account_nt_lv4 add column starter varchar;
+update deposit_account_nt_lv4 set starter = split_part(path, '->' , 1);
+alter table deposit_account_nt_lv4 add column loop_flag varchar;
+update deposit_account_nt_lv4 set loop_flag = '1' where 0 < position(starter in is_cycle);
+update deposit_account_nt_lv4 set loop_flag = '0' where 0 = position(starter in is_cycle);
+alter table deposit_account_nt_lv4 add column path_len int; 
+update deposit_account_nt_lv4 set path_len = length(path)-length(replace(path ,'->',' '));
 
 
 --ntree,,
@@ -112,21 +125,21 @@ alter table  co_fund_acct  add column co_fund varchar ;
 
 UPDATE co_fund_acct SET  max_len = A.max_len   
 FROM  
-	(
-		SELECT starter , id , MIN(path_len) AS max_len 
-		FROM  deposit_account_nt_lv4  
-		WHERE loop_flag = '1' GROUP BY starter , id
-	) A
+    (
+        SELECT starter , id , MIN(path_len) AS max_len 
+        FROM  deposit_account_nt_lv4  
+        WHERE loop_flag = '1' GROUP BY starter , id
+    ) A
 WHERE co_fund_acct.starter = A.starter 
 AND co_fund_acct.id = A.id ;
 
 UPDATE co_fund_acct SET  max_len = A.max_len
 FROM  
-	(
-		SELECT starter , id , MIN(path_len) AS max_len 
-		FROM co_fund_acct 
-		WHERE loop_flag = '1' GROUP BY starter , id
-	)A
+    (
+        SELECT starter , id , MIN(path_len) AS max_len 
+        FROM co_fund_acct 
+        WHERE loop_flag = '1' GROUP BY starter , id
+    )A
 WHERE co_fund_acct.starter = A.id 
 AND co_fund_acct.id = A.starter 
 and co_fund_acct.max_len is null ;
@@ -312,16 +325,16 @@ title('fund_chain_acct_all')
 --GraphGen
 select *
 from GraphGen (
-	on (select * from deposit_account_edge where abs(txn_amt) between 200000 and 250000)
-	partition BY 1
-	SCORE_COL('txn_amt')
-	ITEM1_COL('this_acct')
-	ITEM2_COL('that_acct')
-	OUTPUT_FORMAT('sigma')
-	directed('true')
-	nodesize_max(1) nodesize_min(1)
-	domain('192.168.20.129')
-	title('Deposit Transaction')
+    on (select * from deposit_account_edge where abs(txn_amt) between 200000 and 250000)
+    partition BY 1
+    SCORE_COL('txn_amt')
+    ITEM1_COL('this_acct')
+    ITEM2_COL('that_acct')
+    OUTPUT_FORMAT('sigma')
+    directed('true')
+    nodesize_max(1) nodesize_min(1)
+    domain('192.168.20.129')
+    title('Deposit Transaction')
 )
 ;
 
@@ -333,10 +346,10 @@ grant execute on function pagerank to beehive;
 
 select * from percentile
 (on (
-	select 1 as grp, *
---	from deposit_transaction_1412
-	from card_statement_1412
-	where Mcht_id <> '000000000')
+    select 1 as grp, *
+--    from deposit_transaction_1412
+    from card_statement_1412
+    where Mcht_id <> '000000000')
 partition by grp
 percentile('5', '7.5', '10', '75', '80', '85', '90', '95', '97', '98', '99', '100')
 target_columns('transaction_amt')
