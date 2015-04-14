@@ -8,30 +8,39 @@ from deposit_transaction_1412
 where enc_trans_acct_id <> 'BwUBAAUCBnQJAQcIAAdzcyM='
 ;
 
---edge
+--edge account
 drop table if exists deposit_account_edge;
 create table deposit_account_edge distribute by hash(this_acct) as
 select
     this_acct, that_acct, sum(txn_amt) as txn_amt, count(*) as txn_cnt
 from deposit_transaction
-where this_acct in (
-    select this_acct from deposit_transaction where abs(txn_amt) between 200000 and 250000 union
-    select that_acct from deposit_transaction where abs(txn_amt) between 200000 and 250000)
---    or that_acct in (
---    select this_acct from deposit_transaction where abs(txn_amt) between 200000 and 250000 union
---    select that_acct from deposit_transaction where abs(txn_amt) between 200000 and 250000)
-    and 100000 < abs(txn_amt)
+where 10000 < abs(txn_amt)
 group by 1, 2
+having 2 < count(*)
 ;
 select count(distinct this_acct), count(distinct that_acct), count(*) from deposit_account_edge;
 
---node
+--node account
 drop table if exists deposit_account_node;
 create table deposit_account_node distribute by hash(node) as
 select this_acct as node from deposit_account_edge union
 select that_acct as node from deposit_account_edge
 ;
 select count(*) from deposit_account_node;
+
+--edge customer
+drop table if exists deposit_customer_edge;
+create table deposit_customer_edge distribute by hash(this_cust) as
+select
+    b.enc_cust_id as this_cust, c.enc_cust_id as that_cust, sum(txn_amt) as txn_amt, sum(txn_cnt) as txn_cnt
+from deposit_account_edge as a
+left join bancs_customer_1412 as b on a.this_acct = b.enc_acct_id
+left join bancs_customer_1412 as c on a.that_acct = c.enc_acct_id
+group by 1, 2
+;
+select count(distinct this_cust), count(distinct that_cust), count(*) from deposit_customer_edge;
+
+
 
 
 
@@ -90,7 +99,9 @@ select * from ntree (
 )
 ;
 ------in linux-------
-nohup act -d beehive -h 192.168.20.129 -U beehive -w beehive -f ntree_lv3.sql > ntree_lv3.out &
+nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_lv4.sql > ntree_lv4.out &
+nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_lv5.sql > ntree_lv5.out &
+nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_lv6.sql > ntree_lv6.out &
 
 
 --Reviewed on 0410
@@ -167,11 +178,11 @@ from GraphGen (
     OUTPUT_FORMAT('sigma')
     directed('true')
     nodesize_max(1) nodesize_min(1)
-    domain('192.168.20.129')
+    domain('192.168.31.134')
     title('Deposit Transaction')
 )
 ;
---https://192.168.20.129/chrysalis/mr/graphgen/sigma/sigma.html?id=sigma_1428609071047_0000_1
+--https://192.168.31.134/chrysalis/mr/graphgen/sigma/sigma.html?id=sigma_1428609071047_0000_1
 /*
 library("XML")
 
@@ -293,11 +304,11 @@ from GraphGen (
     OUTPUT_FORMAT('sigma')
     directed('true')
     nodesize_max(1) nodesize_min(1)
-    domain('192.168.20.129')
+    domain('192.168.31.134')
     title('Deposit Transaction')
 )
 ;
---https://192.168.20.129/chrysalis/mr/graphgen/sigma/sigma.html?id=sigma_1428615716709_0000_1
+--https://192.168.31.134/chrysalis/mr/graphgen/sigma/sigma.html?id=sigma_1428615716709_0000_1
 
 
 /*
@@ -315,7 +326,7 @@ ITEM2_COL('that_acct')
 OUTPUT_FORMAT('sigma')
 nodesize_max(1) nodesize_min(1) 
 directed('true')
-domain('192.168.20.129')
+domain('192.168.31.134')
 title('fund_chain_acct_all')
 );
 
@@ -333,7 +344,7 @@ from GraphGen (
     OUTPUT_FORMAT('sigma')
     directed('true')
     nodesize_max(1) nodesize_min(1)
-    domain('192.168.20.129')
+    domain('192.168.31.134')
     title('Deposit Transaction')
 )
 ;
