@@ -1,82 +1,55 @@
-
 --0.把原始數據先做篩選(Mcht_Id為0的暫刪除,大額門檻)
 
-card_statement_1412 -> pos_txn
+drop table if exists card_statement;
+create table card_statement distribute by hash(Enc_Acct_Id) as
+--select * from card_statement_1412
+select * from (
+    select *, '20141001'::timestamp as Snapshot from card_statement_1410 union all
+    select *, '20141101'::timestamp as Snapshot from card_statement_1411 union all
+    select *, '20141201'::timestamp as Snapshot from card_statement_1412
+) as a
+where Mcht_Id <> '000000000'
+    and  5000 < Transaction_Amt
+    and trim(Transaction_code) = '40' --Retail Transaction
+    and transaction_desc_chinese not like '%分期%'
+;
+select count(*) from card_statement;
 
-drop table if exists pos_txn;
-create table pos_txn distribute by hash(Enc_Acct_Id) as
-select * from card_statement_1412
-where Mcht_Id <> '000000000' and  5000 < Transaction_Amt
-and Transaction_City <> '';
-
-select count(*) from pos_txn;
---772,997
-
-
---1. 數據準備 **先把交易日期轉成time_stamp
-drop table if exists pos_txn_nl;
-create table pos_txn_nl distribute by hash(enc_acct_id) as
-select 
-    Enc_Acct_Id,
-    Mcht_Id,
-    Currency_Code,
-    Currency_Transaction_Amt,
-    Mcc_Code,
-    Microfilm_Id,
-    Pos_Entry_Mode,
-    Product_Id,
-    Statement_Date,
-    Statement_Sequence_Nbr,
-    Transaction_Amt,
-    Transaction_City,
-    Transaction_Code,
-    Transaction_Country_Code,
-    (Transaction_date::timestamp) as Transaction_Date,
-    Transaction_Desc_Chinese,
-    Transaction_Posting_Date
-from pos_txn;
+alter table card_statement alter column Transaction_Date type timestamp;
 
 
 
 --2.數據分析
 
 --利用sessionize識別刷卡週期性與短時間內大額消費
- 
-drop table if exists pos_card_session;
-create table pos_card_session distribute by hash(enc_acct_id) as
-SELECT *
-FROM SESSIONIZE (
-    ON pos_txn_nl
-    PARTITION BY Enc_Acct_Id,Mcht_Id
-    ORDER BY transaction_date
-    TIMECOLUMN ('transaction_date')
-    TIMEOUT ('2592000') --30天算1個session
-    RAPIDFIRE ('86399') --1天有多筆就代表有问题
---    RAPIDFIRE ('86401') --1天有多筆就代表有问题
-);
-/*
-select * from pos_card_session
-where enc_acct_id like '%AwUBAwMDB3wJAQcJCAB1dCM%'
-    and mcht_id like '%000000359%'
-order by transaction_date
+drop table if exists card_statement_session;
+create table card_statement_session distribute by hash(enc_acct_id) as
+select *
+from sessionize (
+    on card_statement
+    partition by enc_acct_id, mcht_id
+    order by transaction_date
+    timecolumn ('transaction_date')
+    timeout ('2592000') --30天算1個session
+    rapidfire ('86399') --1天有多筆就代表有问题
+)
 ;
-*/
 
 --sessionize結果統計
 
-drop table if exists pos_card_session_statis;
-create table pos_card_session_statis distribute by hash(Enc_Acct_Id) as
+drop table if exists card_statement_session_stat;
+create table card_statement_session_stat distribute by hash(Enc_Acct_Id) as
 select A1.Enc_Acct_Id,
-       A1.session_cnt+1 as session_cnt , 
+       A1.session_cnt + 1 as session_cnt,
        A1.rapidfire_cnt_24h
-from 
-  (
-  select Enc_Acct_Id,
-    max(sessionid) as session_cnt,
-    sum ( case when rapidfire = 'true' then 1 else 0 end  ) as rapidfire_cnt_24h
-  from pos_card_session
+from (
+    select Enc_Acct_Id,
+        max(sessionid) as session_cnt,
+        sum ( case when rapidfire = 'true' then 1 else 0 end  ) as rapidfire_cnt_24h
+    from card_statement_session
   group by Enc_Acct_Id 
-  ) A1;
+) as a1
+;
   
       
       
@@ -87,7 +60,7 @@ drop table if exists pos_path_mid;
 create table pos_path_mid distribute by hash(Enc_Acct_Id) as
 select * , extract(day from (end_tran_dt - BEGIN_tran_dt)) as duration_day
 FROM NPATH (
-    ON pos_txn_nl
+    ON card_statement
     PARTITION BY  Enc_Acct_Id,Mcht_Id
     order by Transaction_Date 
     PATTERN('A.(B|C)*')
@@ -149,7 +122,7 @@ a_amt+b_amt as txn_amt,accum_txn_amt
 FROM NPATH(
 ON 
 (
-	select distinct * from pos_txn_nl
+	select distinct * from card_statement_nl
 	where tranamt>=10000
 	and (trankind ='071:贷记卡消费' or trankind ='071:银联卡消费')		
 )
@@ -209,19 +182,27 @@ on A3.Enc_Acct_Id = A7.Enc_Acct_Id;
 --視覺化 
 select *
 FROM GraphGen (
-    on (select Enc_Acct_Id, 'M~' ||  mid as mid, frequency  from mid_card_cashout_relation where frequency > 5) 
+    on (select Enc_Acct_Id,
+--            'M~' ||  mid as mid,
+            register_name,
+            frequency
+        from mid_card_cashout_relation as a
+        left join merchant_application as b on a.mid = b.mcht_id
+        where 5 < frequency
+            and b.register_name is not null
+        )
     PARTITION BY 1
     SCORE_COL('frequency')
     ITEM1_COL('enc_acct_id')
-    ITEM2_COL('mid')
+--    ITEM2_COL('mid')
+    ITEM2_COL('register_name')
     OUTPUT_FORMAT('sigma')
     directed('true')
     nodesize_max(5) nodesize_min(1)
-    domain('192.168.20.129')
+    domain('192.168.31.134')
     title('cashout_direction frequency >5 ')
 );
---https://192.168.20.129/chrysalis/mr/graphgen/sigma/sigma.html?id=sigma_1428682011948_0000_1
-
+--https://192.168.31.134/chrysalis/mr/graphgen/sigma/sigma.html?id=sigma_1429046508537_0002_1
  
 drop table if exists pos_path_mid_path;
 create table pos_path_mid_path distribute by hash(mid_path) as
@@ -238,7 +219,7 @@ item1_col('mid_path')
 score_col('cnt')
 output_format('sankey')
 nodesize_max(5) nodesize_min(1)
-domain('192.168.20.129')
+domain('192.168.31.134')
 title('mid_path')
 );
---https://192.168.20.129/chrysalis/mr/graphgen/sankey/sankey_1428682209819_0000_1.html
+--https://192.168.31.134/chrysalis/mr/graphgen/sankey/sankey_1428682209819_0000_1.html
