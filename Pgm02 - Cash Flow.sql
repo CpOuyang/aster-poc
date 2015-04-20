@@ -21,8 +21,8 @@ select
 from deposit_transaction
 where true --rewrite
     and 30000 < abs(txn_amt)
+    and this_acct <> that_acct --存款機交易
 group by 1, 2
---having 2 < count(*)
 ;
 select count(distinct this_acct), count(distinct that_acct), count(*) from deposit_account_edge;
 
@@ -62,6 +62,7 @@ select this_cust,
     sum(txn_cnt) as txn_cnt
 from deposit_account_link
 where not (this_cust is null or that_cust is null)
+    and this_cust <> that_cust --左手給右手
 group by 1, 2
 ;
 select count(distinct this_cust), count(distinct that_cust), count(*) from deposit_customer_edge;
@@ -77,18 +78,48 @@ select count(*) from deposit_customer_node;
 
 
 --pagerank sending
-drop table if exists deposit_account_pr_that;
-create table deposit_account_pr_that distribute by hash(node) as
+drop table if exists deposit_customer_pr_that;
+create table deposit_customer_pr_that distribute by hash(node) as
 select *
 from pagerank (
-    on deposit_account_node as vertices partition by node 
-    on deposit_account_edge as edges partition by this_acct
-    targetkey('that_acct')
+    on deposit_customer_node as vertices partition by node 
+    on deposit_customer_edge as edges partition by this_cust
+    targetkey('that_cust')
     accumulate('node')
     edgeweight('txn_amt')
 ) order by pagerank desc
 ;
-select pagerank, count(*) from deposit_account_pr_that group by 1;
+select pagerank, count(*) from deposit_customer_pr_that group by 1;
+
+--betweenness sending
+drop table if exists deposit_customer_bt_that;
+create table deposit_customer_bt_that distribute by hash(node) as
+select *
+from betweenness (
+    on deposit_customer_node as vertices partition by node 
+    on deposit_customer_edge as edges partition by this_cust
+    targetkey('that_cust')
+    directed('t')
+    accumulate('node')
+--    edgeweight('txn_amt')
+) order by betweenness desc
+;
+select betweenness, count(*) from deposit_customer_bt_that group by 1;
+
+--LocalClusteringCoefficient sending
+drop table if exists deposit_customer_cc_that;
+create table deposit_customer_cc_that distribute by hash(node) as
+select *
+from LocalClusteringCoefficient (
+    on deposit_customer_node as vertices partition by node 
+    on deposit_customer_edge as edges partition by this_cust
+    targetkey('that_cust')
+    directed('t')
+    accumulate('node')
+--    edgeweight('txn_amt')
+) order by avg_cc desc
+;
+select avg_cc, count(*) from deposit_customer_cc_that group by 1;
 
 
 
@@ -110,8 +141,10 @@ create table deposit_account_nt_lv3 distribute by hash(id) as
 select * from ntree (
 --    on deposit_account_nt_input
     on (select * from deposit_account_edge
+        where 500000 <= txn_amt
         union all
-        select distinct '0000', this_acct, 0.0, 0 from deposit_account_edge)
+        select distinct '0000', this_acct, 0.0, 0 from deposit_account_edge
+        where 500000 <= txn_amt)
 --    on deposit_account_edge
     partition by 1
     root_node(this_acct='0000')
@@ -132,77 +165,79 @@ nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_lv4.sql > 
 nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_lv5.sql > ntree_lv5.out &
 nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_lv6.sql > ntree_lv6.out &
 nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_c5_c4_a4.sql > ntree_c5_c4_a4.out &
+nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_c5_a4_c6.sql > ntree_c5_a4_c6.out &
 
 
 
 --ntree analysis
-alter table  deposit_account_nt_lv4 add column starter varchar;
-update deposit_account_nt_lv4 set starter = split_part(path, '->', 1);
+alter table  deposit_customer_nt_lv5 add column starter varchar;
+update deposit_customer_nt_lv5 set starter = split_part(path, '->', 1);
 
-alter table deposit_account_nt_lv4 add column loop_flag varchar;
-update deposit_account_nt_lv4 set loop_flag = '1' where 0 < position(starter in is_cycle);
-update deposit_account_nt_lv4 set loop_flag = '0' where 0 = position(starter in is_cycle);
+alter table deposit_customer_nt_lv5 add column loop_flag varchar;
+update deposit_customer_nt_lv5 set loop_flag = '1' where 0 < position(starter in is_cycle);
+update deposit_customer_nt_lv5 set loop_flag = '0' where 0 = position(starter in is_cycle);
 
-alter table deposit_account_nt_lv4 add column path_len int; 
-update deposit_account_nt_lv4 set path_len = length(path) - length(replace(path, '->', ' '));
+alter table deposit_customer_nt_lv5 add column path_len int; 
+update deposit_customer_nt_lv5 set path_len = length(path) - length(replace(path, '->', ' '));
 
 
-drop table if exists deposit_account_nt_cofund;
-create table deposit_account_nt_cofund distribute by hash(starter) as
+drop table if exists deposit_customer_nt_cofund;
+create table deposit_customer_nt_cofund distribute by hash(starter) as
 select starter, id
-from  deposit_account_nt_lv4
+from  deposit_customer_nt_lv5
 where loop_flag = '1'
 union
 select id as starter, starter as id
-from  deposit_account_nt_lv4
+from  deposit_customer_nt_lv5
 where loop_flag = '1'
 ;
-select count(*) from deposit_account_nt_cofund;
+select count(*) from deposit_customer_nt_cofund;
 
-alter table  deposit_account_nt_cofund  add column max_len int;
-alter table  deposit_account_nt_cofund  add column co_fund varchar;
+alter table  deposit_customer_nt_cofund  add column max_len int;
+alter table  deposit_customer_nt_cofund  add column co_fund varchar;
 
 --???
-update deposit_account_nt_cofund
+update deposit_customer_nt_cofund
 set max_len = a.max_len
 from (
     select starter, id, min(path_len) as max_len
-    from  deposit_account_nt_lv4
+    from  deposit_customer_nt_lv5
     where loop_flag = '1'
     group by starter, id
 ) as a
-where deposit_account_nt_cofund.starter = a.starter
-    and deposit_account_nt_cofund.id = a.id
+where deposit_customer_nt_cofund.starter = a.starter
+    and deposit_customer_nt_cofund.id = a.id
 ;
 
-update deposit_account_nt_cofund
+update deposit_customer_nt_cofund
 set max_len = a.max_len
 from (
     select starter, id, min(path_len) as max_len
-    from deposit_account_nt_cofund
+    from deposit_customer_nt_lv5
     where loop_flag = '1'
     group by starter, id
 ) as a
-where deposit_account_nt_cofund.starter = a.id
-    and deposit_account_nt_cofund.id = a.starter 
-    and deposit_account_nt_cofund.max_len is null
+where deposit_customer_nt_cofund.starter = a.id
+    and deposit_customer_nt_cofund.id = a.starter 
+    and deposit_customer_nt_cofund.max_len is null
 ;
-update deposit_account_nt_cofund set co_fund ='1';
+update deposit_customer_nt_cofund set co_fund ='1';
 
  
-drop table if exists deposit_account_nt_cofund_communities;
-CREATE TABLE deposit_account_nt_cofund_communities
+/*
+drop table if exists deposit_customer_nt_cofund_communities;
+CREATE TABLE deposit_customer_nt_cofund_communities
 distribute BY hash(node) AS 
 SELECT * FROM CommunityGenerator
-( ON deposit_account_nt_cofund )
+( ON deposit_customer_nt_cofund )
 PARTITION BY 1
 );
-
+*/
 
 --GraphGen
 select *
 from GraphGen (
-    on (select starter, id, 1 as score from deposit_account_nt_cofund)
+    on (select starter, id, 1 as score from deposit_customer_nt_cofund)
     partition BY 1
     SCORE_COL('score')
     ITEM1_COL('starter')
@@ -211,7 +246,7 @@ from GraphGen (
     directed('true')
     nodesize_max(1) nodesize_min(1)
     domain('192.168.31.134')
-    title('Deposit Transaction')
+    title('Cofunds Community')
 )
 ;
 --https://192.168.31.134/chrysalis/mr/graphgen/sigma/sigma.html?id=sigma_1429196992216_0002_1
@@ -244,37 +279,36 @@ from co_fund_1y_50w_communities_cus group by c_id  order by cnt desc;
 
 --ntree
 
-drop table if exists deposit_account_nt_lv4_min;
-create table deposit_account_nt_lv4_min distribute by hash(starter) as
+drop table if exists deposit_customer_nt_lv5_min;
+create table deposit_customer_nt_lv5_min distribute by hash(starter) as
 select starter,id,min(path_len) as min_path_len 
-from deposit_account_nt_lv4 where loop_flag = '0' group by 1,2;
+from deposit_customer_nt_lv5 where loop_flag = '0' group by 1,2;
 
-
-drop table if exists fund_chain_acct_01;
-create table fund_chain_acct_01 distribute by hash(starter) as
-select a.* from deposit_account_nt_lv4 a
-join deposit_account_nt_lv4_min b 
+drop table if exists fund_chain_cust_01;
+create table fund_chain_cust_01 distribute by hash(starter) as
+select a.* from deposit_customer_nt_lv5 a
+join deposit_customer_nt_lv5_min b 
 on a.starter =b.starter  
 and a.id =b.id 
 and a.path_len=b.min_path_len 
 where loop_flag = '0';
 
-drop table if exists fund_chain_acct;
-CREATE TABLE fund_chain_acct distribute BY hash(starter) AS 
+drop table if exists fund_chain_cust;
+CREATE TABLE fund_chain_cust distribute BY hash(starter) AS 
 SELECT *, split_part(path, '->', 1) as p1, 
 split_part(path, '->', 2) as p2,
 split_part(path, '->', 3) as p3, 
 split_part(path, '->', 4) as p4
-from deposit_account_nt_lv4
+from deposit_customer_nt_lv5
 where loop_flag = '0' and path_len >=2;   
 
 
-alter table  fund_chain_acct  add column if_loopin varchar;
-update fund_chain_acct set if_loopin = '1' where 
-p1 in(select distinct starter from  deposit_account_nt_cofund) or
-p2 in(select distinct starter from  deposit_account_nt_cofund) or
-p3 in(select distinct starter from  deposit_account_nt_cofund) or
-p4 in(select distinct starter from  deposit_account_nt_cofund) 
+alter table  fund_chain_cust  add column if_loopin varchar;
+update fund_chain_cust set if_loopin = '1' where 
+p1 in(select distinct starter from  deposit_customer_nt_cofund) or
+p2 in(select distinct starter from  deposit_customer_nt_cofund) or
+p3 in(select distinct starter from  deposit_customer_nt_cofund) or
+p4 in(select distinct starter from  deposit_customer_nt_cofund) 
 ;
 
 /*
@@ -289,34 +323,34 @@ if_loopin | count(1)
 */
 
 
-DROP TABLE IF EXISTS fund_chain_acct_all;
+DROP TABLE IF EXISTS fund_chain_cust_all;
 
-CREATE TABLE fund_chain_acct_all distribute BY hash(this_acct) AS 
-SELECT * FROM deposit_account_edge 
-WHERE this_acct IN (
+CREATE TABLE fund_chain_cust_all distribute BY hash(this_cust) AS 
+SELECT * FROM deposit_customer_edge 
+WHERE this_cust IN (
 SELECT DISTINCT p FROM
 (
-SELECT p1 AS p FROM fund_chain_acct  WHERE if_loopin is NULL
+SELECT p1 AS p FROM fund_chain_cust  WHERE if_loopin is NULL
 UNION
-SELECT p2 AS p FROM fund_chain_acct  WHERE if_loopin is NULL
+SELECT p2 AS p FROM fund_chain_cust  WHERE if_loopin is NULL
 UNION
-SELECT p3 AS p FROM fund_chain_acct  WHERE if_loopin is NULL
+SELECT p3 AS p FROM fund_chain_cust  WHERE if_loopin is NULL
 UNION
-SELECT p4 AS p FROM fund_chain_acct  WHERE if_loopin is NULL
-) A)   AND  that_acct IN (
+SELECT p4 AS p FROM fund_chain_cust  WHERE if_loopin is NULL
+) A)   AND  that_cust IN (
 SELECT DISTINCT p FROM
 (
-SELECT p1 AS p FROM fund_chain_acct  WHERE if_loopin is NULL
+SELECT p1 AS p FROM fund_chain_cust  WHERE if_loopin is NULL
 UNION
-SELECT p2 AS p FROM fund_chain_acct  WHERE if_loopin is NULL
+SELECT p2 AS p FROM fund_chain_cust  WHERE if_loopin is NULL
 UNION
-SELECT p3 AS p FROM fund_chain_acct  WHERE if_loopin is NULL
+SELECT p3 AS p FROM fund_chain_cust  WHERE if_loopin is NULL
 UNION
-SELECT p4 AS p FROM fund_chain_acct  WHERE if_loopin is NULL
+SELECT p4 AS p FROM fund_chain_cust  WHERE if_loopin is NULL
 ) B)  
 ;
 
-
+/*
 drop table if exists fund_chain_acct_communities;
 CREATE TABLE fund_chain_acct_communities
 distribute BY hash(node) AS 
@@ -324,20 +358,21 @@ SELECT * FROM CommunityGenerator
 ( ON fund_chain_acct_all )
 PARTITION BY 1
 );
+*/
 
 --GraphGen
 select *
 from GraphGen (
-    on (select this_acct, that_acct, txn_amt from fund_chain_acct_all)
+    on (select this_cust, that_cust, txn_amt from fund_chain_cust_all)
     partition BY 1
     SCORE_COL('txn_amt')
-    ITEM1_COL('this_acct')
-    ITEM2_COL('that_acct')
+    ITEM1_COL('this_cust')
+    ITEM2_COL('that_cust')
     OUTPUT_FORMAT('sigma')
     directed('true')
     nodesize_max(1) nodesize_min(1)
     domain('192.168.31.134')
-    title('Deposit Transaction')
+    title('Sequential Cofunds')
 )
 ;
 --https://192.168.31.134/chrysalis/mr/graphgen/sigma/sigma.html?id=sigma_1428615716709_0000_1
@@ -380,34 +415,3 @@ from GraphGen (
     title('Deposit Transaction')
 )
 ;
-
-
-
-
-
-grant execute on function pagerank to beehive;
-
-select * from percentile
-(on (
-    select 1 as grp, *
---    from deposit_transaction_1412
-    from card_statement_1412
-    where Mcht_id <> '000000000')
-partition by grp
-percentile('5', '7.5', '10', '75', '80', '85', '90', '95', '97', '98', '99', '100')
-target_columns('transaction_amt')
-group_columns('grp')
-);
- grp | percentile |  txn_amt
------+------------+------------
-   1 |         75 |       7900
-   1 |         80 |      12421
-   1 |         85 |      21000
-   1 |         90 |      40000
-   1 |         95 |     101789
-   1 |         97 |     242250
-   1 |         98 |     460000
-   1 |         99 |    1051132
-   1 |        100 | 9993627951
-(9 rows)
-
