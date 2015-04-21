@@ -38,19 +38,19 @@ select count(*) from deposit_account_node;
 drop table if exists deposit_account_link;
 create table deposit_account_link distribute by hash(this_acct) as
 select a.*,
-    b.enc_cust_id as this_cust,
-    c.enc_cust_id as that_cust
+    trim(b.enc_cust_id) as this_cust,
+    trim(c.enc_cust_id) as that_cust
 from deposit_account_edge as a
 left join (
-    select enc_acct_id, enc_cust_id from deposit_1410 union
-    select enc_acct_id, enc_cust_id from deposit_1411 union
-    select enc_acct_id, enc_cust_id from deposit_1412
-) as b on a.this_acct = b.enc_acct_id
+    select trim(enc_acct_id) as Enc_Acct_Id, trim(enc_cust_id) as Enc_Cust_Id from deposit_1410 union
+    select trim(enc_acct_id) as Enc_Acct_Id, trim(enc_cust_id) as Enc_Cust_Id from deposit_1411 union
+    select trim(enc_acct_id) as Enc_Acct_Id, trim(enc_cust_id) as Enc_Cust_Id from deposit_1412
+) as b on trim(a.this_acct) = trim(b.enc_acct_id)
 left join (
-    select enc_acct_id, enc_cust_id from deposit_1410 union
-    select enc_acct_id, enc_cust_id from deposit_1411 union
-    select enc_acct_id, enc_cust_id from deposit_1412
-) as c on a.that_acct = c.enc_acct_id
+    select trim(enc_acct_id) as Enc_Acct_Id, trim(enc_cust_id) as Enc_Cust_Id from deposit_1410 union
+    select trim(enc_acct_id) as Enc_Acct_Id, trim(enc_cust_id) as Enc_Cust_Id from deposit_1411 union
+    select trim(enc_acct_id) as Enc_Acct_Id, trim(enc_cust_id) as Enc_Cust_Id from deposit_1412
+) as c on trim(a.that_acct) = trim(c.enc_acct_id)
 ;
 
 --edge customer
