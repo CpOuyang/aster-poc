@@ -19,9 +19,11 @@ create table deposit_account_edge distribute by hash(this_acct) as
 select
     this_acct, that_acct, sum(txn_amt) as txn_amt, count(*) as txn_cnt
 from deposit_transaction
-where true --rewrite
+where true
     and 30000 < abs(txn_amt)
-    and this_acct <> that_acct --存款機交易
+    and this_acct <> that_acct --存款機
+    -- and (trim(this_acct) in (select trim(enc_acct_id) from merchant_profile_1412) or
+        -- trim(that_acct) in (select trim(enc_acct_id) from merchant_profile_1412))
 group by 1, 2
 ;
 select count(distinct this_acct), count(distinct that_acct), count(*) from deposit_account_edge;
@@ -135,37 +137,30 @@ select avg_cc, count(*) from deposit_customer_cc_that group by 1;
 --from deposit_account_edge
 --;
 
-------ntree_lv3.sql-------
-drop table if exists deposit_account_nt_lv3;
-create table deposit_account_nt_lv3 distribute by hash(id) as
+------ntree_c5.sql-------
+drop table if exists deposit_customer_nt_lv5;
+create table deposit_customer_nt_lv5 distribute by hash(id) as
 select * from ntree (
---    on deposit_account_nt_input
-    on (select * from deposit_account_edge
-        where 500000 <= txn_amt
+    on (select * from deposit_customer_edge
         union all
-        select distinct '0000', this_acct, 0.0, 0 from deposit_account_edge
-        where 500000 <= txn_amt)
---    on deposit_account_edge
+        select distinct '0000', this_cust, 0.0, 0 from deposit_customer_edge)
     partition by 1
-    root_node(this_acct='0000')
---    root_node(true)
-    node_id(that_acct)  
-    parent_id(this_acct)
+    root_node(this_cust = '0000')
+    node_id(that_cust)
+    parent_id(this_cust)
     mode('down')
     allow_cycles('true')
     starts_with('root')
     output('end')
-    maxlevel('3')
-    result(path(that_acct) as path, is_cycle(*))
+    maxlevel('5')
+    result(path(that_cust) as path, is_cycle(*))
 )
 ;
 ------batch in background-------
-nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_lv3.sql > ntree_lv3.out &
-nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_lv4.sql > ntree_lv4.out &
-nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_lv5.sql > ntree_lv5.out &
-nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_lv6.sql > ntree_lv6.out &
+nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_c5.sql > ntree_c5.out &
 nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_c5_c4_a4.sql > ntree_c5_c4_a4.out &
 nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f ntree_c5_a4_c6.sql > ntree_c5_a4_c6.out &
+nohup act -d beehive -h 192.168.31.134 -U beehive -w beehive -f onetime.sql > onetime.out &
 
 
 
@@ -415,3 +410,35 @@ from GraphGen (
     title('Deposit Transaction')
 )
 ;
+
+
+
+--Analytics
+drop table if exists deposit_customer_analytics;
+create table deposit_customer_analytics distribute by hash(enc_cust_id) as
+select a.node as Enc_Cust_Id,
+    b.pagerank,
+    c.modularity as Modularity_Cofund,
+    d.modularity as Modularity_Sequential,
+    e.card_bucket,
+    e.loan_bucket,
+    e.cust_bucket
+from deposit_customer_node as a
+left join deposit_customer_pr_that as b on trim(a.node) = trim(b.node)
+left join gg_cofund as c on trim(a.node) = trim(c.enc_cust_id)
+left join gg_sequential as d on trim(a.node) = trim(d.enc_cust_id)
+left join (
+    select
+        enc_cust_id,
+        max(card_bucket) as Card_Bucket,
+        max(loan_bucket) as Loan_Bucket,
+        max(cust_bucket) as Cust_Bucket
+    from (
+        select * from risk_1410 union all
+        select * from risk_1411 union all
+        select * from risk_1412
+    ) as a
+    group by 1
+) as e on trim(a.node) = trim(e.enc_cust_id)
+;
+select * from deposit_customer_analytics limit 10;

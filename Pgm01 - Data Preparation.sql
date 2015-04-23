@@ -331,3 +331,31 @@ select * from risk_1411 limit 20;
 
 ^z
 ncluster_loader -h 192.168.31.134 -U beehive -w beehive risk_1411 risk_1411.txt -c
+
+
+-- GraphGen Results
+drop table if exists GG_Cofund;
+create table GG_Cofund (
+    Id varchar,
+    Enc_Cust_Id varchar,
+    Modularity bigint
+) distribute by hash(id)
+;
+select * from GG_Cofund limit 20;
+
+^z
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive GG_Cofund GG_Cofund.csv -c --skip-rows 1
+
+
+
+drop table if exists GG_Sequential;
+create table GG_Sequential (
+    Id varchar,
+    Enc_Cust_Id varchar,
+    Modularity bigint
+) distribute by hash(id)
+;
+select * from GG_Sequential limit 20;
+
+^z
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive GG_Sequential GG_Sequential.csv -c --skip-rows 1
