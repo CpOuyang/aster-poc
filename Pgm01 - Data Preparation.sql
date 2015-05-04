@@ -1,7 +1,7 @@
 act -U beehive -w beehive
 
-drop table if exists deposit_transaction_1411;
-create table deposit_transaction_1411 (
+drop table if exists deposit_transaction_1412;
+create table deposit_transaction_1412 (
     Enc_Acct_Id       varchar(256),
     Enc_Trans_Acct_Id varchar(256),
     Actual_Txn_Date   date,
@@ -21,15 +21,15 @@ create table deposit_transaction_1411 (
     Txn_Status_Code   varchar(256)
 ) distribute by hash(enc_acct_id)
 ;
-select * from deposit_transaction_1411 limit 20;
+select * from deposit_transaction_1412 limit 20;
 
 ^z
-ncluster_loader -h 192.168.31.134 -U beehive -w beehive deposit_transaction_1411 deposit_transaction_1411.txt -c
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive deposit_transaction_1412 deposit_transaction_1412.txt -c
 
 
 
-drop table if exists deposit_1411;
-create table deposit_1411 (
+drop table if exists deposit_1412;
+create table deposit_1412 (
     Enc_Acct_Id               varchar(256),
     Enc_Cust_Id               varchar(256),
     Acct_Open_Date            date,
@@ -75,15 +75,15 @@ create table deposit_1411 (
     This_Term_Length          int
 ) distribute by hash(enc_acct_id)
 ;
-select * from deposit_1411 limit 20;
+select * from deposit_1412 limit 20;
 
 ^z
-ncluster_loader -h 192.168.31.134 -U beehive -w beehive deposit_1411 deposit_1411.txt -c
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive deposit_1412 deposit_1412.txt -c
 
 
 
-drop table if exists card_statement_1411;
-create table card_statement_1411 (
+drop table if exists card_statement_1412;
+create table card_statement_1412 (
     Enc_Acct_Id              varchar(256),
     Mcht_Id                  varchar(256),
     Currency_Code            varchar(256),
@@ -103,15 +103,15 @@ create table card_statement_1411 (
     Transaction_Posting_Date date
 ) distribute by hash(enc_acct_id)
 ;
-select * from card_statement_1411 limit 20;
+select * from card_statement_1412 limit 20;
 
 ^z
-ncluster_loader -h 192.168.31.134 -U beehive -w beehive card_statement_1411 card_statement_1411.txt -D '\t'
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive card_statement_1412 card_statement_1412.txt -D '\t'
 
 
 
-drop table if exists card_1411;
-create table card_1411 (
+drop table if exists card_1412;
+create table card_1412 (
     Enc_Acct_Id                  varchar(256),
     Enc_Cust_Id                  varchar(256),
     Appl_Id                      varchar(256),
@@ -150,15 +150,15 @@ create table card_1411 (
     Cycle_Status_Code            varchar(256)
 ) distribute by hash(enc_acct_id)
 ;
-select * from card_1411 limit 20;
+select * from card_1412 limit 20;
 
 ^z
-ncluster_loader -h 192.168.31.134 -U beehive -w beehive card_1411 card_1411.txt -c
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive card_1412 card_1412.txt -c
 
 
 
-drop table if exists card_customer_1411;
-create table card_customer_1411 (
+drop table if exists card_customer_1412;
+create table card_customer_1412 (
     Enc_Cust_Id           varchar(256),
     Enc_Dir_Acct_Id       varchar(256),
     Employment_Years      int,
@@ -174,18 +174,18 @@ create table card_customer_1411 (
     Company_Name          varchar(256)
 ) distribute by hash(enc_cust_id)
 ;
-select * from card_customer_1411 limit 20;
+select * from card_customer_1412 limit 20;
 
 ^z
-ncluster_loader -h 192.168.31.134 -U beehive -w beehive card_customer_1411 card_customer_1411.txt -c -D '\t'
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive card_customer_1412 card_customer_1412.txt -c -D '\t'
 fg
-alter table card_customer_1411 add column Birth_Date date;
-update card_customer_1411 set birth_date = _birth_date::date;
-alter table card_customer_1411 drop column _birth_date;
+alter table card_customer_1412 add column Birth_Date date;
+update card_customer_1412 set birth_date = _birth_date::date;
+alter table card_customer_1412 drop column _birth_date;
 
 
-drop table if exists loan_customer_1411;
-create table loan_customer_1411 (
+drop table if exists loan_customer_1412;
+create table loan_customer_1412 (
     Enc_Cust_Id          varchar(256),
     Enc_Acct_Id          varchar(256),
     Bill_Cycle           varchar(256),
@@ -212,16 +212,16 @@ create table loan_customer_1411 (
     Wm_Start_Date        date
 ) distribute by hash(enc_acct_id)
 ;
-select * from loan_customer_1411 limit 20;
+select * from loan_customer_1412 limit 20;
 
 ^z
-ncluster_loader -h 192.168.31.134 -U beehive -w beehive loan_customer_1411 loan_customer_1411.txt -c
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive loan_customer_1412 loan_customer_1412.txt -c
 
 
 
 
-drop table if exists loan_1411;
-create table loan_1411 (
+drop table if exists loan_1412;
+create table loan_1412 (
     Enc_Acct_Id             varchar(256),
     Enc_Cust_Id             varchar(256),
     Acct_Status_Code        varchar(256),
@@ -268,16 +268,16 @@ create table loan_1411 (
     Total_Loan_Term         int
 ) distribute by hash(enc_acct_id)
 ;
-select * from loan_1411 limit 20;
+select * from loan_1412 limit 20;
 
 ^z
-ncluster_loader -h 192.168.31.134 -U beehive -w beehive loan_1411 loan_1411.txt -c
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive loan_1412 loan_1412.txt -c
 
 
 
 
-drop table if exists merchant_profile_1411;
-create table merchant_profile_1411 (
+drop table if exists merchant_profile_1412;
+create table merchant_profile_1412 (
     Mcht_Id             varchar(256),
     Enc_Acct_Id         varchar(256),
     Bank_Code           varchar(256),
@@ -290,10 +290,10 @@ create table merchant_profile_1411 (
     Terminate_Date      date
 ) distribute by hash(mcht_id)
 ;
-select * from merchant_profile_1411 limit 20;
+select * from merchant_profile_1412 limit 20;
 
 ^z
-ncluster_loader -h 192.168.31.134 -U beehive -w beehive merchant_profile_1411 merchant_profile_1411.txt -c
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive merchant_profile_1412 merchant_profile_1412.txt -c
 
 
 
@@ -319,43 +319,46 @@ ncluster_loader -h 192.168.31.134 -U beehive -w beehive merchant_application mer
 
 
 
-drop table if exists risk_1411;
-create table risk_1411 (
+drop table if exists risk_1412;
+create table risk_1412 (
     Enc_Cust_Id varchar(256),
     Card_Bucket int,
     Loan_Bucket int,
-    Cust_Bucket int
+    Cust_Bucket int,
+    TAS int,
+    TBS int,
+    TCS int
 ) distribute by hash(Enc_Cust_Id)
 ;
-select * from risk_1411 limit 20;
+select * from risk_1412 limit 20;
 
 ^z
-ncluster_loader -h 192.168.31.134 -U beehive -w beehive risk_1411 risk_1411.txt -c
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive risk_1412 risk_1412.txt -c
 
 
 -- GraphGen Results
-drop table if exists GG_Cofund;
-create table GG_Cofund (
+drop table if exists GG_Cust_Cofund;
+create table GG_Cust_Cofund (
     Id varchar,
     Enc_Cust_Id varchar,
     Modularity bigint
 ) distribute by hash(id)
 ;
-select * from GG_Cofund limit 20;
+select * from GG_Cust_Cofund limit 20;
 
 ^z
-ncluster_loader -h 192.168.31.134 -U beehive -w beehive GG_Cofund GG_Cofund.csv -c --skip-rows 1
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive GG_Cust_Cofund GG_Cust_Cofund.csv -c --skip-rows 1
 
 
 
-drop table if exists GG_Sequential;
-create table GG_Sequential (
+drop table if exists GG_Cust_Sequential;
+create table GG_Cust_Sequential (
     Id varchar,
     Enc_Cust_Id varchar,
     Modularity bigint
 ) distribute by hash(id)
 ;
-select * from GG_Sequential limit 20;
+select * from GG_Cust_Sequential limit 20;
 
 ^z
-ncluster_loader -h 192.168.31.134 -U beehive -w beehive GG_Sequential GG_Sequential.csv -c --skip-rows 1
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive GG_Cust_Sequential GG_Cust_Sequential.csv -c --skip-rows 1
