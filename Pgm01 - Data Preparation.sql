@@ -319,6 +319,48 @@ ncluster_loader -h 192.168.31.134 -U beehive -w beehive merchant_application mer
 
 
 
+drop table if exists merchant_chargeback;
+create table merchant_chargeback (
+    Mcht_Id          varchar(256),
+    Transaction_Date date,
+    Transaction_Amt  int,
+    Chargeback_Amt   int,
+    Reason_Code      int,
+    Close_Date       date,
+    Close_Type       varchar(256),
+    Mcc_Code         varchar(256),
+    Card_Type        varchar(256),
+    File_Date        date
+) distribute by hash(mcht_id)
+;
+select * from merchant_chargeback limit 20;
+
+^z
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive merchant_chargeback merchant_chargeback.txt -c
+
+
+
+drop table if exists merchant_fraud;
+create table merchant_fraud (
+    Mcht_Id             varchar(256),
+    Business_Name       varchar(256),
+    Reason_Code         varchar(256),
+    Reason_Desc         varchar(256),
+    Transaction_Date    date,
+    Transaction_Amt     decimal(20,3),
+    Card_Type           varchar(256),
+    Is_Overseas         varchar(256),
+    Informed_Since_Date date,
+    Informed_Until_Date date
+) distribute by hash(mcht_id)
+;
+select * from merchant_fraud limit 20;
+
+^z
+ncluster_loader -h 192.168.31.134 -U beehive -w beehive merchant_fraud merchant_fraud.txt -c
+
+
+
 drop table if exists risk_1412;
 create table risk_1412 (
     Enc_Cust_Id varchar(256),
@@ -362,3 +404,5 @@ select * from GG_Cust_Sequential limit 20;
 
 ^z
 ncluster_loader -h 192.168.31.134 -U beehive -w beehive GG_Cust_Sequential GG_Cust_Sequential.csv -c --skip-rows 1
+
+
